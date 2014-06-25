@@ -106,16 +106,12 @@ end
 
 def current_installed_version
   @current_installed_version ||= begin
-    delimeter = /==/
-
-    version_check_cmd = "#{which_pip(new_resource)} freeze | grep -i '^#{new_resource.package_name}=='"
-    # incase you upgrade pip with pip!
-    if new_resource.package_name.eql?('pip')
-      delimeter = /\s/
-      version_check_cmd = "pip --version"
+    package_name = new_resource.package_name.gsub('_', '-')
+    pattern = Regexp.new("^#{Regexp.escape(package_name)} \\(([^)]+)\\)$", true)
+    shell_out("#{which_pip(new_resource)} list").stdout.lines.find do |line|
+      line =~ pattern
     end
-    result = shell_out(version_check_cmd)
-    (result.exitstatus == 0) ? result.stdout.split(delimeter)[1].strip : nil
+    $1
   end
 end
 
@@ -151,7 +147,10 @@ end
 
 def pip_cmd(subcommand, version='')
   options = { :timeout => new_resource.timeout, :user => new_resource.user, :group => new_resource.group }
-  options[:environment] = { 'HOME' => ::File.expand_path("~#{new_resource.user}") } if new_resource.user
+  environment = Hash.new
+  environment['HOME'] = Dir.home(new_resource.user) if new_resource.user
+  environment.merge!(new_resource.environment) if new_resource.environment && !new_resource.environment.empty?
+  options[:environment] = environment
   shell_out!("#{which_pip(new_resource)} #{subcommand} #{new_resource.options} #{new_resource.package_name}#{version}", options)
 end
 
